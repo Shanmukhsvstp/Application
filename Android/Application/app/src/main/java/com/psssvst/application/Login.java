@@ -36,7 +36,6 @@ public class Login extends AppCompatActivity {
         });
 
         TextInputEditText usernameInput = findViewById(R.id.usernameEditText);
-        TextInputEditText emailInput = findViewById(R.id.emailEditText);
         TextInputEditText passwordInput = findViewById(R.id.passwordEditText);
         MaterialButton loginBtn = findViewById(R.id.loginBtn);
 
@@ -45,10 +44,9 @@ public class Login extends AppCompatActivity {
 
         loginBtn.setOnClickListener(v -> {
             String username = usernameInput.getText().toString();
-            String email = emailInput.getText().toString();
             String password = passwordInput.getText().toString();
 
-            LoginRequest req = new LoginRequest(username, email, password);
+            LoginRequest req = new LoginRequest(username, password);
 
             api.login(req).enqueue(new Callback<LoginResponse>() {
                 @Override
