@@ -3,7 +3,8 @@ package handlers
 import (
 	"application/models"
 	"application/tools"
-	"context"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
@@ -12,6 +13,12 @@ import (
 
 type AuthHandler struct {
 	DB *pgxpool.Pool
+}
+
+func DBHandler(db *pgxpool.Pool) *AuthHandler {
+	return &AuthHandler{
+		DB: db,
+	}
 }
 
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
@@ -30,7 +37,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	userId := ""
 
 	err := h.DB.QueryRow(
-		context.Background(),
+		c.Context(),
 		`
 		SELECT id, password FROM users WHERE username=$1 OR email=$1
 	`,
@@ -139,7 +146,7 @@ func (h *AuthHandler) Signup(c *fiber.Ctx) error {
 	var userID string
 
 	err = h.DB.QueryRow(
-		context.Background(),
+		c.Context(),
 		`
 	INSERT INTO users (username, email, password)
 	VALUES ($1, $2, $3)
@@ -171,5 +178,49 @@ func (h *AuthHandler) Signup(c *fiber.Ctx) error {
 func (h *AuthHandler) CheckUsername(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"message": "username is available",
+	})
+}
+
+func (h *AuthHandler) ValidateUserToken(c *fiber.Ctx) error {
+
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "missing authorization header",
+		})
+	}
+	token := strings.TrimSpace(
+		strings.TrimPrefix(authHeader, "Bearer "),
+	)
+
+	if token == authHeader {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "invalid authorization format",
+		})
+	}
+
+	userID, exp, _, err := tools.GetDataFromToken(token)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "invalid token",
+		})
+	}
+
+	expTime := int64(exp)
+	now := time.Now().Unix()
+
+	if expTime <= now+(24*60*60) { // if token expires in next 24 hours
+		newToken, err := tools.GenerateToken(userID)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{
+				"error": "failed to generate new token",
+			})
+		}
+		return c.Status(200).JSON(fiber.Map{
+			"token": newToken,
+		})
+	}
+	return c.Status(200).JSON(fiber.Map{
+		"message": "token is valid",
 	})
 }

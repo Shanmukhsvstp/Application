@@ -114,11 +114,11 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Already have an account? <font color='#FF0000'>Login</font>"
+        android:text="Already have an account? Login"
         android:gravity="center"
         android:layout_marginTop="16dp"
         android:id="@+id/loginRedirectText"
-        app:layout_constraintTop_toBottomOf="@id/loginBtn"
+        app:layout_constraintTop_toBottomOf="@id/signupBtn"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 

@@ -5,6 +5,7 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.text.SpannableString;
 import android.text.TextPaint;
+import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
 import android.text.style.ForegroundColorSpan;
 import android.view.View;
@@ -88,7 +89,9 @@ public class Signup extends AppCompatActivity {
                 SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
         );
 
-        textView.setText(text);
+        textView.setText(spannableString);
+        textView.setMovementMethod(LinkMovementMethod.getInstance());
+
     }
 
     private void SignupUser(String username, String email, String password, ApiService api) {

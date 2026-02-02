@@ -26,7 +26,7 @@ func main() {
 	dbPool := db.Connect(dbUrl)
 	defer dbPool.Close()
 
-	routes.SetupApiRoutes(app)
+	routes.SetupApiRoutes(app, dbPool)
 
 	if os.Getenv("RUN_MIGRATIONS") == "true" {
 		migrate.RunMigrations(dbPool)
