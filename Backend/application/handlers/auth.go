@@ -352,6 +352,7 @@ func (h *AuthHandler) VerifyEmail(c *fiber.Ctx) error {
 
 func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
+	isResendReq := c.Query("resend", "false")
 	if authHeader == "" {
 		return c.Status(401).JSON(fiber.Map{
 			"error": "missing authorization header",
@@ -395,11 +396,12 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 
 	// Check if an unexpired otp already exists for the user, if yes then resend the same otp, if not generate a new one and send it
 	var existingOTP string
+	var expiresAt time.Time
 	err = h.DB.QueryRow(
 		c.Context(),
-		`SELECT otp FROM email_verification_codes WHERE user_id = $1 AND expires_at > NOW()`,
+		`SELECT otp, expires_at FROM email_verification_codes WHERE user_id = $1 AND expires_at > NOW()`,
 		userID,
-	).Scan(&existingOTP)
+	).Scan(&existingOTP, &expiresAt)
 
 	if err != nil && err != pgx.ErrNoRows {
 		return c.Status(500).JSON(fiber.Map{
@@ -407,10 +409,19 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		})
 	}
 
+	if isResendReq == "false" {
+		if existingOTP != "" && expiresAt.After(time.Now()) {
+			return c.Status(400).JSON(fiber.Map{
+				"error": "an unexpired OTP already exists, please check your email or request to resend the OTP",
+			})
+		}
+	}
+
 	if existingOTP != "" {
 
 		otp := existingOTP
 
+		// Send OTP via email with existing OTP
 		err = tools.SendVerificationEmail(email, otp)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{
@@ -420,6 +431,7 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 
 	} else {
 
+		// No existing OTP, generate a new one and send it
 		otp, err := tools.GenerateOTP()
 
 		if err != nil {

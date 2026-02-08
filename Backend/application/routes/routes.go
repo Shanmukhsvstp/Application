@@ -11,7 +11,7 @@ func SetupApiRoutes(app *fiber.App, dbPool *pgxpool.Pool) {
 
 	api := app.Group("/api")
 	auth := api.Group("/auth")
-	user := app.Group("/user")
+	user := api.Group("/user")
 
 	authHandler := handlers.DBHandler(dbPool)
 
