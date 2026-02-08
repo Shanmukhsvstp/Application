@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/log"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -403,7 +402,7 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if an unexpired otp already exists for the user, if yes then resend the same otp, if not generate a new one and send it
+	// Check if an unexpired otp already exists for the user
 	var existingOTP string
 	var expiresAt time.Time
 	err = h.DB.QueryRow(
@@ -412,65 +411,64 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		userID,
 	).Scan(&existingOTP, &expiresAt)
 
-	log.Infof("Query error: %v", err)
-	log.Infof("Existing OTP: '%s'", existingOTP)
-	log.Infof("Expires at: %v", expiresAt)
-
 	if err != nil && err != pgx.ErrNoRows {
 		return c.Status(500).JSON(fiber.Map{
 			"error": "failed to check existing OTP",
 		})
 	}
 
-	log.Infof("Condition check: !resend(%v) && existingOTP != '' (%v) = %v",
-		!resend,
-		existingOTP != "",
-		!resend && existingOTP != "")
-
+	// If there's an existing unexpired OTP and this is NOT a resend request
 	if !resend && existingOTP != "" {
 		return c.Status(400).JSON(fiber.Map{
 			"error": "an unexpired OTP already exists, please check your email or request to resend the OTP",
 		})
 	}
 
-	if existingOTP != "" {
-
-		otp := existingOTP
-
-		// Send OTP via email with existing OTP
-		err = tools.SendVerificationEmail(email, otp)
+	// If there's an existing unexpired OTP and this IS a resend request
+	if resend && existingOTP != "" {
+		// Resend the existing OTP
+		err = tools.SendVerificationEmail(email, existingOTP)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{
 				"error": "failed to send verification email",
 			})
 		}
-
 	} else {
-
-		// No existing OTP, generate a new one and send it
+		// No unexpired OTP exists, generate a new one
 		otp, err := tools.GenerateOTP()
-
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{
 				"error": "failed to generate OTP",
 			})
 		}
 
+		// Delete any old OTP records for this user (expired or not) before creating new one
+		_, err = h.DB.Exec(
+			c.Context(),
+			`DELETE FROM email_verification_codes WHERE user_id = $1`,
+			userID,
+		)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{
+				"error": "failed to clean up old OTPs",
+			})
+		}
+
+		// Insert new OTP
 		_, err = h.DB.Exec(
 			c.Context(),
 			`INSERT INTO email_verification_codes (user_id, otp, expires_at) VALUES ($1, $2, NOW() + INTERVAL '60 minutes')`,
 			userID,
 			otp,
 		)
-
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{
 				"error": "failed to create OTP",
 			})
 		}
 
+		// Send the new OTP via email
 		err = tools.SendVerificationEmail(email, otp)
-
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{
 				"error": "failed to send verification email",
