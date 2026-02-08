@@ -3,6 +3,7 @@ package handlers
 import (
 	"application/models"
 	"application/tools"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -416,6 +417,8 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 			"error": "failed to check existing OTP",
 		})
 	}
+
+	fmt.Printf("DEBUG: existingOTP='%s', resend=%v\n", existingOTP, resend)
 
 	if !resend && existingOTP != "" {
 		return c.Status(400).JSON(fiber.Map{
