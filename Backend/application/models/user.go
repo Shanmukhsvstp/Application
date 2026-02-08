@@ -16,3 +16,6 @@ type SignupRequest struct {
 type SignupResponse struct {
 	Token string `json:"token"`
 }
+type VerifyEmailStruct struct {
+	Otp string `json:"otp"`
+}

@@ -80,12 +80,6 @@ func (h *AuthHandler) Signup(c *fiber.Ctx) error {
 
 	var req models.SignupRequest
 
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{
-			"error": "invalid request",
-		})
-	}
-
 	currentEmail := req.Email
 	currentUsername := req.Username
 
@@ -208,6 +202,19 @@ func (h *AuthHandler) ValidateUserToken(c *fiber.Ctx) error {
 
 	expTime := int64(exp)
 	now := time.Now().Unix()
+	var isVerified bool
+
+	err = h.DB.QueryRow(
+		c.Context(),
+		`SELECT is_verified FROM users WHERE id = $1`,
+		userID,
+	).Scan(&isVerified)
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "failed to fetch user",
+		})
+	}
 
 	if expTime <= now+(24*60*60) { // if token expires in next 24 hours
 		newToken, err := tools.GenerateToken(userID)
@@ -221,6 +228,229 @@ func (h *AuthHandler) ValidateUserToken(c *fiber.Ctx) error {
 		})
 	}
 	return c.Status(200).JSON(fiber.Map{
-		"message": "token is valid",
+		"message":     "token is valid",
+		"is_verified": isVerified,
+	})
+}
+
+func (h *AuthHandler) IsEmailVerified(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "missing authorization header",
+		})
+	}
+	token := strings.TrimSpace(
+		strings.TrimPrefix(authHeader, "Bearer "),
+	)
+
+	if token == authHeader {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "invalid authorization format",
+		})
+	}
+
+	userID, _, _, err := tools.GetDataFromToken(token)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "invalid token",
+		})
+	}
+
+	var isVerified bool
+	err = h.DB.QueryRow(
+		c.Context(),
+		`SELECT is_verified FROM users WHERE id = $1`,
+		userID,
+	).Scan(&isVerified)
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "failed to fetch user verification status",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"is_verified": isVerified,
+	})
+}
+
+func (h *AuthHandler) VerifyEmail(c *fiber.Ctx) error {
+
+	var req models.VerifyEmailStruct
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{
+			"error": "invalid request",
+		})
+	}
+
+	givenOtp := req.Otp
+
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "missing authorization header",
+		})
+	}
+	token := strings.TrimSpace(
+		strings.TrimPrefix(authHeader, "Bearer "),
+	)
+
+	if token == authHeader {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "invalid authorization format",
+		})
+	}
+	userID, _, _, err := tools.GetDataFromToken(token)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "invalid token",
+		})
+	}
+
+	if len(givenOtp) == 6 {
+		var storedOtp string
+		err = h.DB.QueryRow(
+			c.Context(),
+			`SELECT otp FROM email_verification_codes WHERE user_id = $1 AND expires_at > NOW()`,
+			userID,
+		).Scan(&storedOtp)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{
+				"error": "invalid or expired OTP",
+			})
+		}
+		if givenOtp != storedOtp {
+			return c.Status(400).JSON(fiber.Map{
+				"error": "invalid OTP",
+			})
+		}
+	} else {
+		return c.Status(400).JSON(fiber.Map{
+			"error": "OTP must be 6 characters long",
+		})
+	}
+
+	_, err = h.DB.Exec(
+		c.Context(),
+		`UPDATE users SET is_verified = true WHERE id = $1`,
+		userID,
+	)
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "failed to verify email",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "email verified successfully",
+	})
+
+}
+
+func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "missing authorization header",
+		})
+	}
+	token := strings.TrimSpace(
+		strings.TrimPrefix(authHeader, "Bearer "),
+	)
+
+	if token == authHeader {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "invalid authorization format",
+		})
+	}
+	userID, _, _, err := tools.GetDataFromToken(token)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{
+			"error": "invalid token",
+		})
+	}
+
+	var email string
+	var isVerified bool
+	err = h.DB.QueryRow(
+		c.Context(),
+		`SELECT email, is_verified FROM users WHERE id = $1`,
+		userID,
+	).Scan(&email, &isVerified)
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "failed to fetch user email",
+		})
+	}
+
+	if isVerified {
+		return c.Status(400).JSON(fiber.Map{
+			"error": "email is already verified",
+		})
+	}
+
+	// Check if an unexpired otp already exists for the user, if yes then resend the same otp, if not generate a new one and send it
+	var existingOTP string
+	err = h.DB.QueryRow(
+		c.Context(),
+		`SELECT otp FROM email_verification_codes WHERE user_id = $1 AND expires_at > NOW()`,
+		userID,
+	).Scan(&existingOTP)
+
+	if err != nil && err != pgx.ErrNoRows {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "failed to check existing OTP",
+		})
+	}
+
+	if existingOTP != "" {
+
+		otp := existingOTP
+
+		err = tools.SendVerificationEmail(email, otp)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{
+				"error": "failed to send verification email",
+			})
+		}
+
+	} else {
+
+		otp, err := tools.GenerateOTP()
+
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{
+				"error": "failed to generate OTP",
+			})
+		}
+
+		_, err = h.DB.Exec(
+			c.Context(),
+			`INSERT INTO email_verification_codes (user_id, otp, expires_at) VALUES ($1, $2, NOW() + INTERVAL '60 minutes')`,
+			userID,
+			otp,
+		)
+
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{
+				"error": "failed to create OTP",
+			})
+		}
+
+		err = tools.SendVerificationEmail(email, otp)
+
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{
+				"error": "failed to send verification email",
+			})
+		}
+	}
+
+	return c.Status(200).JSON(fiber.Map{
+		"message": "verification email sent successfully",
 	})
 }

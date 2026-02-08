@@ -27,6 +27,7 @@ import com.psssvst.application.APIs.models.login.LoginRequest;
 import com.psssvst.application.APIs.models.login.LoginResponse;
 import com.psssvst.application.APIs.models.signup.SignupRequest;
 import com.psssvst.application.APIs.models.signup.SignupResponse;
+import com.psssvst.application.Components.Loader;
 import com.psssvst.application.Managers.SessionManager;
 
 import retrofit2.Call;
@@ -53,13 +54,20 @@ public class Signup extends AppCompatActivity {
         TextView goToLogin = findViewById(R.id.loginRedirectText);
         Button signupBtn = findViewById(R.id.signupBtn);
 
+        ApiClient.init(this);
+
         ApiService api = ApiClient.getClient().create(ApiService.class);
 
         initTextView(goToLogin);
         signupBtn.setOnClickListener(v->{
             String username = usernameInput.getText().toString();
+            username = username.toLowerCase();
             String email = emailInput.getText().toString();
             String password = passwordInput.getText().toString();
+            if (username.contains(" ") || email.contains(" ") || password.contains(" ")) {
+                Toast.makeText(this, "Fields cannot contain spaces", Toast.LENGTH_SHORT).show();
+                return;
+            }
             SignupUser(username, email, password, api);
         });
     }
@@ -96,6 +104,8 @@ public class Signup extends AppCompatActivity {
 
     private void SignupUser(String username, String email, String password, ApiService api) {
 
+        Loader.getInstance().show(this, "Signing you up...");
+
         SignupRequest req = new SignupRequest(username, email, password);
 
         api.signup(req).enqueue(new Callback<SignupResponse>() {
@@ -107,12 +117,17 @@ public class Signup extends AppCompatActivity {
                     if (signupResponse != null && signupResponse.getToken() != null) {
                         SessionManager sessionManager = new SessionManager(Signup.this);
                         sessionManager.saveToken(signupResponse.getToken());
+                        Loader.getInstance().hide();
+                        startActivity(new Intent(Signup.this, Home.class));
+                        finish();
                     } else {
                         Toast.makeText(Signup.this, "Something's wrong on our end...", Toast.LENGTH_SHORT).show();
+                        Loader.getInstance().hide();
                     }
                 } else {
                     try {
                         Toast.makeText(Signup.this, response.errorBody().string(), Toast.LENGTH_SHORT).show();
+                        Loader.getInstance().hide();
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -122,6 +137,7 @@ public class Signup extends AppCompatActivity {
             @Override
             public void onFailure(Call<SignupResponse> call, Throwable t) {
                 Toast.makeText(Signup.this, t.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
+                Loader.getInstance().hide();
             }
         });
 

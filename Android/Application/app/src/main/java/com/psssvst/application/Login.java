@@ -1,5 +1,6 @@
 package com.psssvst.application;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.widget.Toast;
 
@@ -15,6 +16,7 @@ import com.psssvst.application.APIs.ApiClient;
 import com.psssvst.application.APIs.ApiService;
 import com.psssvst.application.APIs.models.login.LoginRequest;
 import com.psssvst.application.APIs.models.login.LoginResponse;
+import com.psssvst.application.Components.Loader;
 import com.psssvst.application.Managers.SessionManager;
 
 import retrofit2.Call;
@@ -39,12 +41,16 @@ public class Login extends AppCompatActivity {
         TextInputEditText passwordInput = findViewById(R.id.passwordEditText);
         MaterialButton loginBtn = findViewById(R.id.loginBtn);
 
+        ApiClient.init(this);
+
         ApiService api = ApiClient.getClient().create(ApiService.class);
 
 
         loginBtn.setOnClickListener(v -> {
             String username = usernameInput.getText().toString();
             String password = passwordInput.getText().toString();
+
+            Loader.getInstance().show(this, "Logging in...");
 
             LoginRequest req = new LoginRequest(username, password);
 
@@ -57,12 +63,17 @@ public class Login extends AppCompatActivity {
                         if (loginResponse != null && loginResponse.getToken() != null) {
                             SessionManager sessionManager = new SessionManager(Login.this);
                             sessionManager.saveToken(loginResponse.getToken());
+                            Loader.getInstance().hide();
+                            startActivity(new Intent(Login.this, Home.class));
+                            finish();
                         } else {
                             Toast.makeText(Login.this, "Something's wrong on our end...", Toast.LENGTH_SHORT).show();
+                            Loader.getInstance().hide();
                         }
                     } else {
                         try {
                             Toast.makeText(Login.this, response.errorBody().string(), Toast.LENGTH_SHORT).show();
+                            Loader.getInstance().hide();
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -72,6 +83,7 @@ public class Login extends AppCompatActivity {
                 @Override
                 public void onFailure(Call<LoginResponse> call, Throwable t) {
                     Toast.makeText(Login.this, t.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
+                    Loader.getInstance().hide();
                 }
             });
         });
