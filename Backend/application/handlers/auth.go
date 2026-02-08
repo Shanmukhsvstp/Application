@@ -3,7 +3,7 @@ package handlers
 import (
 	"application/models"
 	"application/tools"
-	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -412,13 +412,20 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		userID,
 	).Scan(&existingOTP, &expiresAt)
 
+	log.Printf("Query error: %v", err)
+	log.Printf("Existing OTP: '%s'", existingOTP)
+	log.Printf("Expires at: %v", expiresAt)
+
 	if err != nil && err != pgx.ErrNoRows {
 		return c.Status(500).JSON(fiber.Map{
 			"error": "failed to check existing OTP",
 		})
 	}
 
-	fmt.Printf("DEBUG: existingOTP='%s', resend=%v\n", existingOTP, resend)
+	log.Printf("Condition check: !resend(%v) && existingOTP != '' (%v) = %v",
+		!resend,
+		existingOTP != "",
+		!resend && existingOTP != "")
 
 	if !resend && existingOTP != "" {
 		return c.Status(400).JSON(fiber.Map{
