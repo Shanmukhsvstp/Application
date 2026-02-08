@@ -352,8 +352,10 @@ func (h *AuthHandler) VerifyEmail(c *fiber.Ctx) error {
 }
 
 func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
+	// Get bearer token from Authorization header
 	authHeader := c.Get("Authorization")
 	// isResendReq := c.Query("resend", "false")
+	// Get resend query param and parse it as boolean, default to false if not provided or invalid
 	resend, err := strconv.ParseBool(c.Query("resend", "false"))
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{
@@ -361,20 +363,27 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		})
 	}
 
+	// Bearer missing or invalid:
+
 	if authHeader == "" {
 		return c.Status(401).JSON(fiber.Map{
 			"error": "missing authorization header",
 		})
 	}
+
+	// Extract token from "Bearer <token>" format
 	token := strings.TrimSpace(
 		strings.TrimPrefix(authHeader, "Bearer "),
 	)
 
+	// If token is same as authHeader, it means "Bearer " prefix was missing or token was missing
 	if token == authHeader {
 		return c.Status(401).JSON(fiber.Map{
 			"error": "invalid authorization format",
 		})
 	}
+
+	// Validate token and extract user ID from it
 	userID, _, _, err := tools.GetDataFromToken(token)
 	if err != nil {
 		return c.Status(401).JSON(fiber.Map{
@@ -382,6 +391,7 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		})
 	}
 
+	// Fetch user email and verification status from database using userID
 	var email string
 	var isVerified bool
 	err = h.DB.QueryRow(
@@ -396,6 +406,7 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		})
 	}
 
+	// If email is already verified, no need to send verification email
 	if isVerified {
 		return c.Status(400).JSON(fiber.Map{
 			"error": "email is already verified",
@@ -405,6 +416,7 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 	// Check if an unexpired otp already exists for the user
 	var existingOTP string
 	var expiresAt time.Time
+	// Get the existing OTP and its expiration time for this user, if it exists and is not expired
 	err = h.DB.QueryRow(
 		c.Context(),
 		`SELECT otp, expires_at FROM email_verification_codes WHERE user_id = $1 AND expires_at > NOW()`,
