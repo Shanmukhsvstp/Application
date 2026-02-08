@@ -3,12 +3,12 @@ package handlers
 import (
 	"application/models"
 	"application/tools"
-	"log"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -412,9 +412,9 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		userID,
 	).Scan(&existingOTP, &expiresAt)
 
-	log.Printf("Query error: %v", err)
-	log.Printf("Existing OTP: '%s'", existingOTP)
-	log.Printf("Expires at: %v", expiresAt)
+	log.Infof("Query error: %v", err)
+	log.Infof("Existing OTP: '%s'", existingOTP)
+	log.Infof("Expires at: %v", expiresAt)
 
 	if err != nil && err != pgx.ErrNoRows {
 		return c.Status(500).JSON(fiber.Map{
@@ -422,7 +422,7 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		})
 	}
 
-	log.Printf("Condition check: !resend(%v) && existingOTP != '' (%v) = %v",
+	log.Infof("Condition check: !resend(%v) && existingOTP != '' (%v) = %v",
 		!resend,
 		existingOTP != "",
 		!resend && existingOTP != "")
