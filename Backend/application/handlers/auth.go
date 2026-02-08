@@ -3,6 +3,7 @@ package handlers
 import (
 	"application/models"
 	"application/tools"
+	"strconv"
 	"strings"
 	"time"
 
@@ -352,7 +353,14 @@ func (h *AuthHandler) VerifyEmail(c *fiber.Ctx) error {
 
 func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
-	isResendReq := c.Query("resend", "false")
+	// isResendReq := c.Query("resend", "false")
+	resend, err := strconv.ParseBool(c.Query("resend", "false"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{
+			"error": "invalid resend value",
+		})
+	}
+
 	if authHeader == "" {
 		return c.Status(401).JSON(fiber.Map{
 			"error": "missing authorization header",
@@ -409,12 +417,10 @@ func (h *AuthHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		})
 	}
 
-	if isResendReq == "false" {
-		if existingOTP != "" && expiresAt.After(time.Now()) {
-			return c.Status(400).JSON(fiber.Map{
-				"error": "an unexpired OTP already exists, please check your email or request to resend the OTP",
-			})
-		}
+	if !resend && existingOTP != "" {
+		return c.Status(400).JSON(fiber.Map{
+			"error": "an unexpired OTP already exists, please check your email or request to resend the OTP",
+		})
 	}
 
 	if existingOTP != "" {
